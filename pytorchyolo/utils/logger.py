@@ -20,3 +20,6 @@ class Logger(object):
         """Log scalar variables."""
         for tag, value in tag_value_pairs:
             self.writer.add_scalar(tag, value, step)
+
+    def image_w_bbox(self, tag, image, bbox, step):
+        pass

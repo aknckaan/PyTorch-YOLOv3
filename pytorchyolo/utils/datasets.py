@@ -54,6 +54,9 @@ class CacaoDataSet(Dataset):
         self.max_size = self.img_size + 3 * 32
         self.batch_count = 0
         self.transform = transform
+        self.img_files = self.img_files[:10]
+        self.label_files = self.label_files[:10]
+
 
     def __getitem__(self, index):
 

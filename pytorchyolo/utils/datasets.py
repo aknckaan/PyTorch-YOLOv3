@@ -8,6 +8,8 @@ import warnings
 import numpy as np
 from PIL import Image
 from PIL import ImageFile
+import json
+from pathlib import Path
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -28,6 +30,86 @@ def pad_to_square(img, pad_value):
 def resize(image, size):
     image = F.interpolate(image.unsqueeze(0), size=size, mode="nearest").squeeze(0)
     return image
+
+
+class CacaoDataSet(Dataset):
+    def __init__(self, list_path, img_size=416, multiscale=True, transform=None):
+
+        f = json.load(open(list_path))
+        
+        self.img_files = []
+        self.label_files = []
+        
+        for path, labels in zip(f["images"], f["annotations"]):
+
+            path =  Path(list_path).parent/"images"/Path(path["file_name"]) 
+
+            self.img_files.append(path)
+            self.label_files.append(labels)
+
+        self.img_size = img_size
+        self.max_objects = 100
+        self.multiscale = multiscale
+        self.min_size = self.img_size - 3 * 32
+        self.max_size = self.img_size + 3 * 32
+        self.batch_count = 0
+        self.transform = transform
+
+    def __getitem__(self, index):
+
+        # ---------
+        #  Image
+        # ---------
+        img_path = self.img_files[index % len(self.img_files)]
+
+        img = np.array(Image.open(img_path).convert('RGB'), dtype=np.uint8)
+    
+
+        # ---------
+        #  Label
+        # ---------
+        label_path = self.label_files[index % len(self.img_files)]
+        boxes = [label_path["category_id"], *label_path["bbox"]]
+        boxes = np.array(boxes).reshape(-1, 5)
+
+        # -----------
+        #  Transform
+        # -----------
+        if self.transform:
+            try:
+                img, bb_targets = self.transform((img, boxes))
+            except Exception:
+                print("Could not apply transform.")
+                return
+
+        return img_path, img, bb_targets
+
+    def collate_fn(self, batch):
+        self.batch_count += 1
+
+        # Drop invalid images
+        batch = [data for data in batch if data is not None]
+
+        paths, imgs, bb_targets = list(zip(*batch))
+
+        # Selects new image size every tenth batch
+        if self.multiscale and self.batch_count % 10 == 0:
+            self.img_size = random.choice(
+                range(self.min_size, self.max_size + 1, 32))
+
+        # Resize images to input shape
+        imgs = torch.stack([resize(img, self.img_size) for img in imgs])
+
+        # Add sample index to targets
+        for i, boxes in enumerate(bb_targets):
+            boxes[:, 0] = i
+        bb_targets = torch.cat(bb_targets, 0)
+
+        return paths, imgs, bb_targets
+
+    def __len__(self):
+        return len(self.img_files)
+
 
 
 class ImageFolder(Dataset):
@@ -60,10 +142,14 @@ class ListDataset(Dataset):
         with open(list_path, "r") as file:
             self.img_files = file.readlines()
 
+
         self.label_files = []
         for path in self.img_files:
             image_dir = os.path.dirname(path)
             label_dir = "labels".join(image_dir.rsplit("images", 1))
+            print(label_dir)
+            print(image_dir)
+
             assert label_dir != image_dir, \
                 f"Image path must contain a folder named 'images'! \n'{image_dir}'"
             label_file = os.path.join(label_dir, os.path.basename(path))

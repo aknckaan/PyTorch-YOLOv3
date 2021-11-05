@@ -1,4 +1,4 @@
 classes= 1
-train=data/custom/train.txt
-valid=data/custom/valid.txt
+train=../drive/MyDrive/strawberry_dataset/strawdi/train/annotations.json
+valid=../drive/MyDrive/strawberry_dataset/strawdi/val/annotations.json
 names=data/custom/classes.names
